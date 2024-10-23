@@ -532,6 +532,15 @@ class ExtractMayaSceneRawModel(BaseSettingsModel):
         default_factory=list, title="Families"
     )
 
+class ExtractSkeletalMeshAlembicModel(BaseSettingsModel):
+    enabled: bool = SettingsField(title="ExtractSkeletalMeshAlembic")
+    optional: bool = SettingsField(title="Optional")
+    active: bool = SettingsField(title="Active")
+
+class ExtractSkeletalMeshFbxModel(BaseSettingsModel):
+    enabled: bool = SettingsField(title="ExtractSkeletalMeshFbx")
+    optional: bool = SettingsField(title="Optional")
+    active: bool = SettingsField(title="Active")
 
 class ExtractCameraAlembicModel(BaseSettingsModel):
     enabled: bool = SettingsField(title="ExtractCameraAlembic")
@@ -1050,6 +1059,14 @@ class PublishersModel(BaseSettingsModel):
     ExtractMayaUsdAnim: ExtractMayaUsdAnimModel = SettingsField(
         default_factory=ExtractMayaUsdAnimModel,
         title="Extract Maya USD with Animation"
+    )
+    ExtractSkeletalMeshAlembic: ExtractSkeletalMeshAlembicModel = SettingsField(
+        default_factory=ExtractSkeletalMeshAlembicModel,
+        title="Extract Unreal Skeletal Mesh (Alembic)"
+    )
+    ExtractSkeletalMeshFbx: ExtractSkeletalMeshFbxModel = SettingsField(
+        default_factory=ExtractSkeletalMeshFbxModel,
+        title="Extract Unreal Skeletal Mesh (FBX)"
     )
 
 
@@ -1694,5 +1711,15 @@ DEFAULT_PUBLISH_SETTINGS = {
         "enabled": True,
         "optional": True,
         "active": False,
+    },
+    "ExtractSkeletalMeshAlembic": {
+        "enabled": False,
+        "optional": True,
+        "active": True,
+    },
+    "ExtractSkeletalMeshFbx": {
+        "enabled": False,
+        "optional": True,
+        "active": True,
     }
 }

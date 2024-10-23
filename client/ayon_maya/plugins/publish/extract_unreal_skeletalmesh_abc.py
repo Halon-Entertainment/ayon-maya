@@ -7,8 +7,9 @@ from ayon_maya.api.lib import maintained_selection, suspended_refresh
 from ayon_maya.api import plugin
 from maya import cmds  # noqa
 
+from ayon_core.pipeline import publish
 
-class ExtractUnrealSkeletalMeshAbc(plugin.MayaExtractorPlugin):
+class ExtractUnrealSkeletalMeshAbc(plugin.MayaExtractorPlugin, publish.OptionalPyblishPluginMixin):
     """Extract Unreal Skeletal Mesh as FBX from Maya. """
 
     label = "Extract Unreal Skeletal Mesh - Alembic"
@@ -16,7 +17,7 @@ class ExtractUnrealSkeletalMeshAbc(plugin.MayaExtractorPlugin):
     optional = True
 
     def process(self, instance):
-        if not instance.data.get('exportAbc', False):
+        if not self.is_active(instance.data):
             return
 
         self.log.debug("Extracting pointcache..")

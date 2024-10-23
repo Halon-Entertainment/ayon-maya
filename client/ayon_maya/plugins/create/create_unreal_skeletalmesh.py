@@ -45,6 +45,8 @@ class CreateUnrealSkeletalMesh(plugin.MayaCreator):
         return dynamic_data
 
     def create(self, product_name, instance_data, pre_create_data):
+        from pprint import pformat
+        self.log.debug(pformat(pre_create_data))
 
         with lib.undo_chunk():
             instance = super(CreateUnrealSkeletalMesh, self).create(
@@ -99,13 +101,7 @@ class CreateUnrealSkeletalMesh(plugin.MayaCreator):
                     placeholder="attr1, attr2"),
             TextDef("attrPrefix",
                     label="Custom Attributes Prefix",
-                    placeholder="prefix1, prefix2"),
-            BoolDef("exportAbc",
-                    label="Export Alembic",
-                    default=False),
-            BoolDef("exportFbx",
-                    label="Export FBX",
-                    default=True)
+                    placeholder="prefix1, prefix2")
         ])
 
         return defs
