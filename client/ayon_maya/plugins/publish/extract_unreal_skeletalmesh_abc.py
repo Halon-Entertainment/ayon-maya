@@ -16,6 +16,9 @@ class ExtractUnrealSkeletalMeshAbc(plugin.MayaExtractorPlugin):
     optional = True
 
     def process(self, instance):
+        if not instance.data.get('exportAbc', False):
+            return
+
         self.log.debug("Extracting pointcache..")
 
         geo = cmds.listRelatives(

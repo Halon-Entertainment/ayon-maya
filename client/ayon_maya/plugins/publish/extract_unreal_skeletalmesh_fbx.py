@@ -28,6 +28,9 @@ class ExtractUnrealSkeletalMeshFbx(plugin.MayaExtractorPlugin):
     optional = True
 
     def process(self, instance):
+        if not instance.data.get('exportFbx', False):
+            return
+
         fbx_exporter = fbx.FBXExtractor(log=self.log)
 
         # Define output path

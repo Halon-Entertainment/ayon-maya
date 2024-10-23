@@ -99,7 +99,13 @@ class CreateUnrealSkeletalMesh(plugin.MayaCreator):
                     placeholder="attr1, attr2"),
             TextDef("attrPrefix",
                     label="Custom Attributes Prefix",
-                    placeholder="prefix1, prefix2")
+                    placeholder="prefix1, prefix2"),
+            BoolDef("exportAbc",
+                    label="Export Alembic",
+                    default=False),
+            BoolDef("exportFbx",
+                    label="Export FBX",
+                    default=True)
         ])
 
         return defs
