@@ -1,5 +1,7 @@
 import json
 import os
+from pprint import pformat
+import traceback
 
 import ayon_api
 import qargparse
@@ -853,7 +855,17 @@ class ReferenceLoader(Loader):
         reference_node = lib.get_reference_node(members, self.log)
         if reference_node is None:
             raise LoadError("No reference node found in container")
+
+
         namespace = cmds.referenceQuery(reference_node, namespace=True)
+        instance_number = 1
+        repre_entity['context']['instance_number'] = instance_number
+        print(pformat(container))
+        print(repre_entity)
+        new_namespace = '{product[type]}_{asset}_{product[name]}_{instance_number:03d}'.format(**repre_entity['context'])
+        new_container_name = '{product[type]}_{asset}_{product[name]}_{instance_number:03d}_{product[name]}_CON'.format(**repre_entity['context'])
+
+            
 
         file_type = {
             "ma": "mayaAscii",
@@ -894,6 +906,20 @@ class ReferenceLoader(Loader):
                                 loadReference=reference_node,
                                 type=file_type,
                                 returnNewNodes=True)
+
+
+            cmds.namespace(rename=[namespace, new_namespace])
+            content = [x.replace(namespace.lstrip(':'), new_namespace) for x in content]
+            cmds.lockNode(reference_node, lock=False)
+            cmds.rename(reference_node, new_namespace + 'RN')
+            cmds.rename(container['objectName'],  new_container_name)
+            container['objectName'] = new_container_name
+            container['namespace'] = new_namespace
+            cmds.setAttr(new_container_name + ".namespace", new_namespace, type="string")
+            namespace = new_namespace
+
+
+
         except RuntimeError as exc:
             # When changing a reference to a file that has load errors the
             # command will raise an error even if the file is still loaded
@@ -910,7 +936,11 @@ class ReferenceLoader(Loader):
 
             self.log.warning("Ignoring file read error:\n%s", exc)
 
-        self._organize_containers(content, container["objectName"])
+        try:
+            self._organize_containers(content, container["objectName"])
+        except Exception as error:
+            print(error)
+
 
         # Reapply alembic settings.
         if repre_entity["name"] == "abc" and alembic_data:
