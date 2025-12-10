@@ -2,10 +2,7 @@ from maya import cmds
 
 from ayon_maya.api import lib, plugin
 
-from ayon_core.lib import (
-    BoolDef,
-    NumberDef,
-)
+from ayon_core.lib import BoolDef
 
 
 def _get_animation_attr_defs(
@@ -17,7 +14,6 @@ def _get_animation_attr_defs(
     defs.extend(
         [
             BoolDef("farm", label="Submit to Farm"),
-            NumberDef("priority", label="Farm job Priority", default=50),
             BoolDef("refresh", label="Refresh viewport during export"),
             BoolDef(
                 "includeParentHierarchy",
@@ -89,6 +85,7 @@ class CreateAnimation(plugin.MayaHiddenCreator):
     name = "animationDefault"
     label = "Animation"
     product_type = "animation"
+    product_base_type = "animation"
     icon = "male"
 
     include_parent_hierarchy = False
@@ -113,6 +110,7 @@ class CreatePointCache(plugin.MayaCreator):
     identifier = "io.openpype.creators.maya.pointcache"
     label = "Pointcache"
     product_type = "pointcache"
+    product_base_type = "pointcache"
     icon = "gears"
     include_user_defined_attributes = False
 
