@@ -1,7 +1,5 @@
 import json
 import os
-from pprint import pformat
-import traceback
 
 import ayon_api
 import qargparse
@@ -20,6 +18,7 @@ from ayon_core.pipeline import (
     HiddenCreator,
     LoaderPlugin,
     get_current_project_name,
+    get_representation_context,
     get_representation_path,
     publish,
 )
@@ -31,7 +30,7 @@ from maya.app.renderSetup.model import renderSetup
 from pyblish.api import ContextPlugin, InstancePlugin
 
 from . import lib
-from .lib import imprint, read
+from .lib import create_rig_animation_instance, imprint, read
 from .pipeline import containerise
 
 log = Logger.get_logger()
@@ -719,7 +718,7 @@ class Loader(LoaderPlugin):
         folder_entity = context["folder"]
         product_entity = context["product"]
         product_name = product_entity["name"]
-        product_type = product_entity["productType"]
+        product_type = product_entity['productType']
         formatting_data = {
             "asset_name": folder_entity["name"],
             "asset_type": "asset",
@@ -844,9 +843,10 @@ class ReferenceLoader(Loader):
         from maya import cmds
 
         node = container["objectName"]
-
         project_name = context["project"]["name"]
         repre_entity = context["representation"]
+        repre_context = get_representation_context(get_current_project_name(), repre_entity['id'])
+        representation = get_representation_context(get_current_project_name(), container['representation'])
 
         path = get_representation_path(repre_entity)
 
@@ -858,14 +858,26 @@ class ReferenceLoader(Loader):
 
 
         namespace = cmds.referenceQuery(reference_node, namespace=True)
-        instance_number = 1
-        repre_entity['context']['instance_number'] = instance_number
-        print(pformat(container))
-        print(repre_entity)
-        new_namespace = '{product[type]}_{asset}_{product[name]}_{instance_number:03d}'.format(**repre_entity['context'])
-        new_container_name = '{product[type]}_{asset}_{product[name]}_{instance_number:03d}_{product[name]}_CON'.format(**repre_entity['context'])
 
-            
+        context = repre_entity['context']
+
+        options = {"attach_to_root": True, 'count': 1}
+        old_group, new_namespace, _ = self.get_custom_namespace_and_group(representation, options, "reference_loader")
+        new_group, new_namespace, _ = self.get_custom_namespace_and_group(repre_context, options, "reference_loader")
+        count = options.get("count") or 1
+
+        for c in range(0, count):
+            new_namespace = lib.get_custom_namespace(new_namespace)
+            group_name = "{}:{}".format(
+                namespace,
+                new_group
+            )
+            new_group = group_name
+
+            options['group_name'] = group_name
+
+        new_container_name = '{new_namespace}_{product[name]}_CON'.format(new_namespace=new_namespace, **repre_entity['context'])
+
 
         file_type = {
             "ma": "mayaAscii",
@@ -913,12 +925,10 @@ class ReferenceLoader(Loader):
             cmds.lockNode(reference_node, lock=False)
             cmds.rename(reference_node, new_namespace + 'RN')
             cmds.rename(container['objectName'],  new_container_name)
+
             container['objectName'] = new_container_name
             container['namespace'] = new_namespace
             cmds.setAttr(new_container_name + ".namespace", new_namespace, type="string")
-            namespace = new_namespace
-
-
 
         except RuntimeError as exc:
             # When changing a reference to a file that has load errors the
@@ -936,16 +946,13 @@ class ReferenceLoader(Loader):
 
             self.log.warning("Ignoring file read error:\n%s", exc)
 
-        try:
-            self._organize_containers(content, container["objectName"])
-        except Exception as error:
-            print(error)
-
+        self._organize_containers(content, container["objectName"])
+        cmds.rename(f"{new_namespace}:{old_group}", f"{new_namespace}:{new_group.split(':')[2]}") # Post Namespace switch
 
         # Reapply alembic settings.
         if repre_entity["name"] == "abc" and alembic_data:
             alembic_nodes = cmds.ls(
-                "{}:*".format(namespace), type="AlembicNode"
+                "{}:*".format(new_namespace), type="AlembicNode"
             )
             if alembic_nodes:
                 alembic_node = alembic_nodes[0]  # assume single AlembicNode
@@ -964,6 +971,7 @@ class ReferenceLoader(Loader):
 
         # Fix PLN-40 for older containers created with AYON that had the
         # `.verticesOnlySet` set to True.
+        node = new_container_name
         if cmds.getAttr("{}.verticesOnlySet".format(node)):
             self.log.info("Setting %s.verticesOnlySet to False", node)
             cmds.setAttr("{}.verticesOnlySet".format(node), False)
@@ -1014,6 +1022,22 @@ class ReferenceLoader(Loader):
             # Refresh UI and viewport.
             de = xgenm.xgGlobal.DescriptionEditor
             de.refresh("Full")
+
+        if context['product']['type'] == 'rig':
+            previous_anim_set = f"animationrig_{namespace.lstrip(':').replace('rig_', '')}"
+            members = cmds.sets(previous_anim_set, q=True)
+            for member in members:
+                if member.endswith("_controls_SET") or \
+                    member.endswith("_out_SET") or \
+                    member.endswith("_skeletonAnim_SET") or \
+                    member.endswith("_skeletonMesh_SET"):
+
+                    cmds.delete(member)
+            cmds.delete(previous_anim_set)
+
+            create_rig_animation_instance(
+                content, repre_context, new_namespace.replace('rig_', ''), options=options, log=self.log
+            )
 
     def remove(self, container):
         """Remove an existing `container` from Maya scene
