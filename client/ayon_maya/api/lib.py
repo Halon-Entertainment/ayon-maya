@@ -1,5 +1,5 @@
 """Standalone helper functions"""
-
+from __future__ import annotations
 import os
 import copy
 import sys
@@ -25,14 +25,15 @@ from ayon_core.pipeline import (
     get_current_folder_path,
     discover_loader_plugins,
     loaders_from_representation,
-    get_representation_path,
     load_container,
     registered_host,
     AVALON_CONTAINER_ID,
     AVALON_INSTANCE_ID,
     AYON_INSTANCE_ID,
     AYON_CONTAINER_ID,
+    Anatomy,
 )
+from ayon_core.pipeline.load import get_representation_path_with_anatomy
 from ayon_core.lib import NumberDef
 from ayon_core.pipeline.context_tools import get_current_task_entity
 from ayon_core.pipeline.create import CreateContext
@@ -90,6 +91,15 @@ class RigSetsNotExistError(RuntimeError):
     pass
 
 
+class CameraInstanceCreationError(RuntimeError):
+    """Raised when camera instance creation fails.
+
+    This is raised from `create_camera_instance` when the required
+    camera nodes are missing or invalid.
+    """
+    pass
+
+
 def get_main_window():
     """Acquire Maya's main window"""
     from qtpy import QtWidgets
@@ -100,6 +110,23 @@ def get_main_window():
             for widget in QtWidgets.QApplication.topLevelWidgets()
         }["MayaWindow"]
     return self._parent
+
+
+@contextlib.contextmanager
+def unlocked(node):
+    """Unlock a node for the duration of the context.
+
+    Args:
+        node (str): The name of the node to unlock.
+    """
+    has_locked = cmds.lockNode(node, query=True, lock=True)[0]
+    cmds.lockNode(node, lock=False)
+
+    try:
+        yield
+
+    finally:
+        cmds.lockNode(node, lock=has_locked)
 
 
 @contextlib.contextmanager
@@ -1449,13 +1476,32 @@ def get_id_required_nodes(referenced_nodes=False,
     def _add_to_result_if_valid(obj):
         """Add to `result` if the object should be included"""
         fn_dep.setObject(obj)
-        if (
-                not existing_ids
-                and fn_dep.hasAttribute("cbId")
-                # May not be an empty value
-                and fn_dep.findPlug("cbId", True).asString()
-        ):
-            return
+        if not existing_ids and fn_dep.hasAttribute("cbId"):
+            # If not including existing ids, skip nodes with `cbId` attribute
+            plug = fn_dep.findPlug("cbId", True)
+            try:
+                value = plug.asString()
+                if value:
+                    return
+            except RuntimeError:
+                # Likely not a string attribute which we will consider as
+                # not having a `cbId` attribute - however we do log a warning
+                if obj.hasFn(OpenMaya.MFn.kDagNode):
+                    fn_dag.setObject(obj)
+                    name = fn_dag.fullPathName()
+                else:
+                    name = fn_dep.name()
+
+                type_name = cmds.getAttr(f"{name}.cbId", type=True)
+                if type_name == "string":
+                    # Type is correct so the issue must be something else,
+                    # so we re-raise the exception
+                    raise
+                # If the attribute is not a string, we log a warning
+                log.warning(
+                    f"\"{name}.cbId\" is not a string attribute. "
+                    f"Attribute type: '{type_name}'."
+                )
 
         if not referenced_nodes and fn_dep.isFromReferencedFile:
             return
@@ -1799,9 +1845,20 @@ def is_valid_reference_node(reference_node):
     return OpenMaya.MFnReference(depend_node).isValidReference()
 
 
-def get_container_members(container):
+def get_container_members(container, include_reference_associated_nodes=False):
     """Returns the members of a container.
     This includes the nodes from any loaded references in the container.
+
+    Arguments:
+        container (str | dict): container data or name of container node
+        include_reference_associated_nodes (bool): whether to include the
+            associated nodes of references, like those produced from
+            referencing with `groupReference`. This is disabled by default,
+            for backwards compatibility to existing calls.
+
+    Returns:
+        list[str]: The nodes belonging to the container.
+
     """
     if isinstance(container, dict):
         # Assume it's a container dictionary
@@ -1839,7 +1896,33 @@ def get_container_members(container):
                                     objectsOnly=True)
         all_members.update(reference_members)
 
+        if include_reference_associated_nodes:
+            associated_nodes: list[str] = cmds.listConnections(
+                f"{ref}.associatedNode",
+                source=True,
+                destination=False,
+                fullNodeName=True
+            ) or []
+            all_members.update(associated_nodes)
+
     return list(all_members)
+
+
+def get_representation_path_by_project(project_name, repre_entity):
+    """Get the representation path for a given representation entity.
+    This function would be used temporarily until the version from
+    the core addon is available.
+    Args:
+        project_name (str): The project name.
+        repre_entity (dict): The representation entity.
+        project_name (str, optional): The project name. Defaults to None.
+    Returns:
+        str: The representation path.
+    """
+    if project_name is None:
+        project_name = get_current_project_name()
+    anatomy = Anatomy(project_name)
+    return get_representation_path_with_anatomy(repre_entity, anatomy)
 
 
 # region LOOKDEV
@@ -1910,7 +1993,9 @@ def assign_look_by_version(nodes, version_id):
     shader_nodes = get_container_members(container_node)
 
     # Load relationships
-    shader_relation = get_representation_path(json_representation)
+    shader_relation = get_representation_path_by_project(
+        project_name, json_representation
+    )
     with open(shader_relation, "r") as f:
         relationships = json.load(f)
 
@@ -4210,6 +4295,22 @@ def get_reference_node_parents(ref):
     return parents
 
 
+def get_creator_identifier(node: str) -> str | None:
+    """Get the creator identifier of an instance node.
+
+    Arguments:
+        node (str): The name of the instance node.
+
+    Returns:
+        str | None: The creator identifier of the instance or None if not found.
+    """
+    if get_attribute(f"{node}.id") not in {
+        AYON_INSTANCE_ID, AVALON_INSTANCE_ID
+    }:
+        return None
+    return get_attribute(f"{node}.creator_identifier")
+
+
 def create_rig_animation_instance(
     nodes, context, namespace, options=None, log=None
 ):
@@ -4298,6 +4399,71 @@ def create_rig_animation_instance(
         create_context.create(
             creator_identifier=creator_identifier,
             variant=namespace,
+            pre_create_data={
+                "use_selection": True,
+                "lock_instance": options.get("lock_instance", False)
+            }
+        )
+
+
+def create_camera_instance(
+        nodes, context, namespace, options=None, log=None
+):
+    """Create a camera instance from the loaded camera nodes.
+
+    Args:
+        nodes (list): The loaded camera nodes.
+        context (dict): Representation context of the camera container.
+        namespace (str): The namespace for the new camera instance.
+        options (dict, optional): Additional options for the camera instance.
+        log (logging.Logger, optional): Logger to log to if provided.
+    """
+    if options is None:
+        options = {}
+
+    referenced_nodes: list[str] = [
+        node for node in nodes 
+        if cmds.referenceQuery(node, isNodeReferenced=True)
+    ]
+    camera_nodes: list[str] = cmds.listRelatives(
+        referenced_nodes, children=True, type="camera", fullPath=True
+    ) or []
+
+    folder_entity: dict = context["folder"]
+    product_entity: dict = context["product"]
+    product_type: str = product_entity["productType"]
+    product_name: str = product_entity["name"]
+
+    custom_product_name = options.get("cameraProductName")
+    if custom_product_name:
+        formatting_data = {
+            "folder": {
+                "name": folder_entity["name"]
+            },
+            "product": {
+                "type": product_type,
+                "name": product_name,
+            },
+            "asset": folder_entity["name"],
+            "subset": product_name,
+            "family": product_type
+        }
+        namespace = get_custom_namespace(
+            custom_product_name.format(**formatting_data)
+        )
+    if log:
+        log.info(f"Creating product: {namespace}")
+
+    # Fill creator identifier
+    creator_identifier = "io.openpype.creators.maya.camera"
+
+    host = registered_host()
+    create_context = CreateContext(host)
+    with maintained_selection():
+        cmds.select(camera_nodes, noExpand=True)
+        create_context.create(
+            creator_identifier=creator_identifier,
+            variant=custom_product_name if custom_product_name else f"_{product_name}",
             pre_create_data={"use_selection": True}
         )
 
