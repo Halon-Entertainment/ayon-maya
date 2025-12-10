@@ -1024,7 +1024,7 @@ class ReferenceLoader(Loader):
             de.refresh("Full")
 
         if context['product']['type'] == 'rig':
-            previous_anim_set = f"animationrig_{namespace.lstrip(':').replace('rig_', '')}"
+            previous_anim_set = f"animation{namespace.lstrip(':')}"
             members = cmds.sets(previous_anim_set, q=True)
             for member in members:
                 if member.endswith("_controls_SET") or \
@@ -1036,7 +1036,7 @@ class ReferenceLoader(Loader):
             cmds.delete(previous_anim_set)
 
             create_rig_animation_instance(
-                content, repre_context, new_namespace.replace('rig_', ''), options=options, log=self.log
+                content, repre_context, new_namespace, options=options, log=self.log
             )
 
     def remove(self, container):
