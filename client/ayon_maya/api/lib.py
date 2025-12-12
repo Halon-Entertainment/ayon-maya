@@ -332,6 +332,18 @@ def generate_capture_preset(instance, camera, path,
     if transparency != 0:
         preset["viewport2_options"]["transparencyAlgorithm"] = transparency
 
+    # Backfill light limit settings from hardwareRenderingGlobals if not set
+    # in settings, so playblasts match user's viewport preferences
+    viewport2_options = preset.setdefault("viewport2_options", {})
+    if "useMaximumHardwareLights" not in viewport2_options:
+        viewport2_options["useMaximumHardwareLights"] = cmds.getAttr(
+            "hardwareRenderingGlobals.useMaximumHardwareLights"
+        )
+    if "maxHardwareLights" not in viewport2_options:
+        viewport2_options["maxHardwareLights"] = cmds.getAttr(
+            "hardwareRenderingGlobals.maxHardwareLights"
+        )
+
     # Update preset with current panel setting
     # if override_viewport_options is turned off
     if not capture_preset["ViewportOptions"]["override_viewport_options"]:
@@ -3184,7 +3196,9 @@ def load_capture_preset(data):
         "motionBlurEnable",
         "motionBlurSampleCount",
         "motionBlurShutterOpenFraction",
-        "lineAAEnable"
+        "lineAAEnable",
+        "maxHardwareLights",
+        "useMaximumHardwareLights",
     }
     for key, value in data["ViewportOptions"].items():
 
