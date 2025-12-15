@@ -20,7 +20,6 @@ from ayon_core.pipeline import (
     LoaderPlugin,
     get_current_project_name,
     get_representation_context,
-    get_representation_path,
     publish,
 )
 from ayon_core.pipeline.create import get_product_name
@@ -938,8 +937,13 @@ class ReferenceLoader(Loader):
                                 returnNewNodes=True)
 
 
-            cmds.namespace(rename=[namespace, new_namespace])
-            content = [x.replace(namespace.lstrip(':'), new_namespace) for x in content]
+            cmds.namespace(rename=[namespace.lstrip(':'), new_namespace])
+            new_group_name = new_group.split(':')[-1]
+            content = json.loads(
+                json.dumps(content) \
+                .replace(namespace.lstrip(':'), new_namespace) \
+                .replace(old_group, new_group_name))
+            
             cmds.lockNode(reference_node, lock=False)
             cmds.rename(reference_node, new_namespace + 'RN')
             cmds.rename(container['objectName'],  new_container_name)
@@ -947,6 +951,7 @@ class ReferenceLoader(Loader):
             container['objectName'] = new_container_name
             container['namespace'] = new_namespace
             cmds.setAttr(new_container_name + ".namespace", new_namespace, type="string")
+            cmds.rename(f"{new_namespace}:{old_group}", f"{new_namespace}:{new_group.split(':')[2]}") # Post Namespace switch
 
         except RuntimeError as exc:
             # When changing a reference to a file that has load errors the
@@ -964,8 +969,6 @@ class ReferenceLoader(Loader):
 
             self.log.warning("Ignoring file read error:\n%s", exc)
 
-        self._organize_containers(content, container["objectName"])
-        cmds.rename(f"{new_namespace}:{old_group}", f"{new_namespace}:{new_group.split(':')[2]}") # Post Namespace switch
 
         # Reapply alembic settings.
         if repre_entity["name"] == "abc" and alembic_data:
@@ -1049,8 +1052,8 @@ class ReferenceLoader(Loader):
                     member.endswith("_out_SET") or \
                     member.endswith("_skeletonAnim_SET") or \
                     member.endswith("_skeletonMesh_SET"):
-
                     cmds.delete(member)
+
             cmds.delete(previous_anim_set)
 
             create_rig_animation_instance(
