@@ -30,8 +30,7 @@ from maya.app.renderSetup.model import renderSetup
 from pyblish.api import ContextPlugin, InstancePlugin
 
 from . import lib
-from .lib import create_rig_animation_instance, imprint, read
-from .lib import imprint, read, unlocked
+from .lib import imprint, read, unlocked, create_rig_animation_instance
 from .pipeline import containerise
 
 log = Logger.get_logger()
