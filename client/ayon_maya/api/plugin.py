@@ -1006,7 +1006,7 @@ class ReferenceLoader(Loader):
         # Update metadata
         for attr_name, value in [
             ("representation", repre_entity["id"]),
-            ("project_name", context["project"]["name"]),
+            ("project_name", repre_context["project"]["name"]),
         ]:
             lib.set_attribute(node=node, attribute=attr_name, value=value)
 
@@ -1043,7 +1043,7 @@ class ReferenceLoader(Loader):
             de = xgenm.xgGlobal.DescriptionEditor
             de.refresh("Full")
 
-        if context['product']['type'] == 'rig':
+        if repre_context['product']['productType'] == 'rig':
             previous_anim_set = f"animation{namespace.lstrip(':')}"
             members = cmds.sets(previous_anim_set, q=True)
             for member in members:
