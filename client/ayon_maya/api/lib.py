@@ -324,6 +324,10 @@ def generate_capture_preset(instance, camera, path,
 
     # When using 'project settings' we preserve the capture preset that
     # was picked, then we do not override it with the instance data
+    log.debug(
+        "[DEBUG generate_capture_preset] instance displayLights=%s",
+        instance.data.get("displayLights")
+    )
     if instance.data["displayLights"] != "project_settings":
         viewport_options["displayLights"] = instance.data["displayLights"]
 
@@ -343,6 +347,32 @@ def generate_capture_preset(instance, camera, path,
         viewport2_options["maxHardwareLights"] = cmds.getAttr(
             "hardwareRenderingGlobals.maxHardwareLights"
         )
+
+    # DEBUG: Log light count and viewport2_options for playblast debugging
+    light_types = [
+        "light", "aiAreaLight", "aiSkyDomeLight", "aiMeshLight",
+        "aiPhotometricLight", "RedshiftPhysicalLight", "RedshiftDomeLight",
+        "RedshiftIESLight", "RedshiftPortalLight"
+    ]
+    all_lights = []
+    for lt in light_types:
+        lights = cmds.ls(type=lt)
+        if lights:
+            all_lights.extend(lights)
+    log.debug(
+        "[DEBUG generate_capture_preset] Scene lights count: %d, lights: %s",
+        len(all_lights), all_lights
+    )
+    log.debug(
+        "[DEBUG generate_capture_preset] viewport2_options: "
+        "useMaximumHardwareLights=%s, maxHardwareLights=%s",
+        viewport2_options.get("useMaximumHardwareLights"),
+        viewport2_options.get("maxHardwareLights")
+    )
+    log.debug(
+        "[DEBUG generate_capture_preset] displayLights=%s",
+        preset.get("viewport_options", {}).get("displayLights")
+    )
 
     # Update preset with current panel setting
     # if override_viewport_options is turned off

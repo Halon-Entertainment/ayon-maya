@@ -788,6 +788,31 @@ def _applied_viewport2_options(options):
         except ValueError:
             options.pop(opt)
 
+    # DEBUG: Log light settings and scene light count
+    light_types = [
+        "light", "aiAreaLight", "aiSkyDomeLight", "aiMeshLight",
+        "aiPhotometricLight", "RedshiftPhysicalLight", "RedshiftDomeLight",
+        "RedshiftIESLight", "RedshiftPortalLight"
+    ]
+    all_lights = []
+    for lt in light_types:
+        lights = cmds.ls(type=lt)
+        if lights:
+            all_lights.extend(lights)
+    print("[DEBUG capture] Scene lights count: {}, lights: {}".format(
+        len(all_lights), all_lights[:10] if len(all_lights) > 10 else all_lights
+    ))
+    print("[DEBUG capture] Applying viewport2_options: "
+          "useMaximumHardwareLights={}, maxHardwareLights={}".format(
+              options.get("useMaximumHardwareLights"),
+              options.get("maxHardwareLights")
+          ))
+    print("[DEBUG capture] Original hardwareRenderingGlobals: "
+          "useMaximumHardwareLights={}, maxHardwareLights={}".format(
+              original.get("useMaximumHardwareLights"),
+              original.get("maxHardwareLights")
+          ))
+
     # Apply settings
     _iteritems = getattr(options, "iteritems", options.items)
     for opt, value in _iteritems():
