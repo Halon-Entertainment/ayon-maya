@@ -169,7 +169,6 @@ def capture(camera=None,
     with _independent_panel(width=width + padding,
                             height=height + padding,
                             off_screen=off_screen) as panel:
-        cmds.setFocus(panel)
 
         all_playblast_kwargs = {
             "compression": compression,
@@ -632,13 +631,7 @@ def _independent_panel(width, height, off_screen=False):
     if not off_screen:
         cmds.showWindow(window)
 
-    # Set the modelEditor of the modelPanel as the active view so it takes
-    # the playback focus. Does seem redundant with the `refresh` added in.
-    editor = cmds.modelPanel(panel, query=True, modelEditor=True)
-    cmds.modelEditor(editor, edit=True, activeView=True)
-
     # Force a draw refresh of Maya so it keeps focus on the new panel
-    # This focus is required to force preview playback in the independent panel
     cmds.refresh(force=True)
 
     try:
@@ -787,31 +780,6 @@ def _applied_viewport2_options(options):
             original[opt] = cmds.getAttr("hardwareRenderingGlobals." + opt)
         except ValueError:
             options.pop(opt)
-
-    # DEBUG: Log light settings and scene light count
-    light_types = [
-        "light", "aiAreaLight", "aiSkyDomeLight", "aiMeshLight",
-        "aiPhotometricLight", "RedshiftPhysicalLight", "RedshiftDomeLight",
-        "RedshiftIESLight", "RedshiftPortalLight"
-    ]
-    all_lights = []
-    for lt in light_types:
-        lights = cmds.ls(type=lt)
-        if lights:
-            all_lights.extend(lights)
-    print("[DEBUG capture] Scene lights count: {}, lights: {}".format(
-        len(all_lights), all_lights[:10] if len(all_lights) > 10 else all_lights
-    ))
-    print("[DEBUG capture] Applying viewport2_options: "
-          "useMaximumHardwareLights={}, maxHardwareLights={}".format(
-              options.get("useMaximumHardwareLights"),
-              options.get("maxHardwareLights")
-          ))
-    print("[DEBUG capture] Original hardwareRenderingGlobals: "
-          "useMaximumHardwareLights={}, maxHardwareLights={}".format(
-              original.get("useMaximumHardwareLights"),
-              original.get("maxHardwareLights")
-          ))
 
     # Apply settings
     _iteritems = getattr(options, "iteritems", options.items)

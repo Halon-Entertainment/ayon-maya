@@ -228,6 +228,7 @@ def render_capture_preset(preset):
     # not supported by `capture` so we pop it off of the preset
     reload_textures = preset["viewport_options"].pop("loadTextures", False)
     panel = preset.pop("panel")
+
     with contextlib.ExitStack() as stack:
         stack.enter_context(maintained_time())
         stack.enter_context(panel_camera(panel, preset["camera"]))
@@ -238,7 +239,7 @@ def render_capture_preset(preset):
             stack.enter_context(material_loading_mode(mode="immediate"))
             # Regenerate all UDIM tiles previews
             reload_all_udim_tile_previews()
-        path = capture.capture(log=self.log, **preset)
+        path = capture.capture(log=log, **preset)
 
     return path
 
