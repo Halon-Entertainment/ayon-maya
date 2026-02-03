@@ -3260,6 +3260,10 @@ def load_capture_preset(data):
             # Settings enum value string to integer
             viewport2_options['hwFogFalloff'] = int(value)
 
+        elif key == 'fogging':
+            # Map settings 'fogging' to VP2 'hwFogEnable'
+            viewport2_options['hwFogEnable'] = value
+
         # Then handle Viewport 2.0 Options
         elif key in VIEWPORT2_OPTIONS:
             viewport2_options[key] = value
