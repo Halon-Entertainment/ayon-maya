@@ -3160,6 +3160,75 @@ def bake_to_world_space(nodes,
     return world_space_nodes
 
 
+def _has_sequence_fog_preset():
+    """Check if current sequence has a fog preset in halon_maya_toolkit settings.
+    
+    Also checks if hardware fog is currently enabled in Maya viewport.
+    
+    Returns:
+        bool: True if sequence has fog preset AND fog is enabled in viewport.
+    """
+    # Check if hardware fog is enabled in Maya
+    try:
+        fog_enabled = cmds.getAttr("hardwareRenderingGlobals.hwFogEnable")
+        if not fog_enabled:
+            return False
+    except Exception:
+        return False
+    
+    # Get current context
+    project_name = get_current_project_name()
+    folder_path = get_current_folder_path()
+    if not project_name or not folder_path:
+        return False
+    
+    # Get halon_maya_toolkit fog presets
+    settings = get_project_settings(project_name)
+    toolkit_settings = settings.get("halon_maya_toolkit", {})
+    maya_settings = toolkit_settings.get("maya", {})
+    fog_presets = maya_settings.get("fog_presets", [])
+    
+    if not fog_presets:
+        return False
+    
+    # Get sequence name from folder hierarchy
+    sequence_name = None
+    try:
+        folder_entity = ayon_api.get_folder_by_path(
+            project_name, folder_path, fields=["id", "parentId", "name", "folderType"]
+        )
+        if folder_entity:
+            # If this folder is a Sequence, use its name
+            if folder_entity.get("folderType") == "Sequence":
+                sequence_name = folder_entity.get("name")
+            else:
+                # Get parent folder (sequence)
+                parent_id = folder_entity.get("parentId")
+                if parent_id:
+                    parent_entity = ayon_api.get_folder_by_id(
+                        project_name, parent_id, fields=["id", "name", "folderType"]
+                    )
+                    if parent_entity:
+                        if parent_entity.get("folderType") == "Sequence":
+                            sequence_name = parent_entity.get("name")
+                        else:
+                            sequence_name = parent_entity.get("name")
+    except Exception:
+        return False
+    
+    if not sequence_name:
+        return False
+    
+    # Check if sequence has a fog preset (case-insensitive)
+    sequence_upper = sequence_name.upper()
+    for preset in fog_presets:
+        preset_seq = preset.get("sequence_name", "")
+        if preset_seq.upper() == sequence_upper:
+            return True
+    
+    return False
+
+
 def load_capture_preset(data):
     """Convert AYON Extract Playblast settings to `capture` arguments
 
@@ -3219,7 +3288,6 @@ def load_capture_preset(data):
         "hwFogStart",
         "hwFogEnd",
         "hwFogAlpha",
-        "hwFogFalloff",
         "hwFogColorR",
         "hwFogColorG",
         "hwFogColorB",
@@ -3231,10 +3299,36 @@ def load_capture_preset(data):
         "maxHardwareLights",
         "useMaximumHardwareLights",
     }
+    # Fog-related settings - may be skipped if sequence has fog preset
+    FOG_SETTINGS = {
+        "fogging",
+        "hwFogFalloff",
+        "hwFogStart",
+        "hwFogEnd",
+        "hwFogAlpha",
+        "hwFogColorR",
+        "hwFogColorG",
+        "hwFogColorB",
+        "hwFogDensity",
+    }
+    
+    # Check if we should use artist's viewport fog settings instead of AYON
+    # This happens when: sequence has fog preset AND fog is enabled in viewport
+    use_viewport_fog = _has_sequence_fog_preset()
+    if use_viewport_fog:
+        log.debug(
+            "Using artist's viewport fog settings - sequence has fog preset "
+            "and hardware fog is enabled in Maya"
+        )
+    
     for key, value in data["ViewportOptions"].items():
 
         # There are some keys we want to ignore
         if key in {"override_viewport_options", "high_quality"}:
+            continue
+
+        # Skip fog settings if using artist's viewport fog from hardwareRenderingGlobals
+        if use_viewport_fog and key in FOG_SETTINGS:
             continue
 
         # First handle special cases where we do value conversion to
