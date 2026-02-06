@@ -3160,11 +3160,201 @@ def bake_to_world_space(nodes,
     return world_space_nodes
 
 
+# -----------------------------------------------------------------------------
+# Hardware Fog Utilities
+# -----------------------------------------------------------------------------
+
+def get_sequence_name():
+    """Get the sequence name for the current folder using AYON API.
+
+    Gets the current folder entity and its parent (sequence) folder,
+    returning the parent folder's name.
+
+    Returns:
+        str or None: The sequence name, or None if not found.
+    """
+    project_name = get_current_project_name()
+    folder_path = get_current_folder_path()
+
+    if not project_name or not folder_path:
+        return None
+
+    # Get current folder entity with parentId
+    folder_entity = ayon_api.get_folder_by_path(
+        project_name, folder_path, fields=["id", "parentId", "name", "folderType"]
+    )
+
+    if not folder_entity:
+        return None
+
+    # If this folder is already a Sequence type, use its name
+    if folder_entity.get("folderType") == "Sequence":
+        return folder_entity.get("name")
+
+    # Get parent folder (sequence)
+    parent_id = folder_entity.get("parentId")
+    if not parent_id:
+        return None
+
+    parent_entity = ayon_api.get_folder_by_id(
+        project_name, parent_id, fields=["id", "name", "folderType"]
+    )
+
+    if not parent_entity:
+        return None
+
+    # If parent is a Sequence, return its name
+    if parent_entity.get("folderType") == "Sequence":
+        return parent_entity.get("name")
+
+    # Otherwise just return the parent name
+    return parent_entity.get("name")
+
+
+def get_fog_presets():
+    """Get fog presets from project settings.
+
+    Returns:
+        list: List of fog preset dictionaries.
+    """
+    project_name = get_current_project_name()
+    if not project_name:
+        return []
+
+    settings = get_project_settings(project_name)
+    maya_settings = settings.get("maya", {})
+    publish_settings = maya_settings.get("publish", {})
+    playblast_settings = publish_settings.get("ExtractPlayblast", {})
+    return playblast_settings.get("fog_presets", [])
+
+
+def find_preset_for_sequence(sequence_name, presets):
+    """Find matching fog preset for a sequence.
+
+    Args:
+        sequence_name (str): The sequence name to match.
+        presets (list): List of fog preset dictionaries.
+
+    Returns:
+        dict or None: The matching preset, or None if not found.
+    """
+    if not sequence_name or not presets:
+        return None
+
+    sequence_upper = sequence_name.upper()
+    for preset in presets:
+        preset_seq = preset.get("sequence_name", "")
+        if preset_seq.upper() == sequence_upper:
+            return preset
+
+    return None
+
+
+def apply_fog_settings(attrs):
+    """Apply fog settings to hardwareRenderingGlobals.
+
+    Args:
+        attrs (dict): Fog attributes dictionary with hwFog* keys.
+    """
+    # Enable fog
+    cmds.setAttr("hardwareRenderingGlobals.hwFogEnable", True)
+
+    # Apply fog parameters
+    fog_attr_names = [
+        "hwFogFalloff",
+        "hwFogStart",
+        "hwFogEnd",
+        "hwFogAlpha",
+        "hwFogColorR",
+        "hwFogColorG",
+        "hwFogColorB",
+    ]
+
+    for attr in fog_attr_names:
+        if attr in attrs:
+            value = attrs[attr]
+            # hwFogFalloff is stored as string in settings, convert to int
+            # Default to 0 (Linear) if not set or empty
+            if attr == "hwFogFalloff":
+                value = int(value) if value else 0
+            full_attr = "hardwareRenderingGlobals.{}".format(attr)
+            cmds.setAttr(full_attr, value)
+
+    # Also enable fogging in the viewport
+    # Get active model panel and enable fogging
+    panels = cmds.getPanel(type="modelPanel") or []
+    for panel in panels:
+        try:
+            cmds.modelEditor(panel, edit=True, fogging=True)
+        except RuntimeError:
+            pass
+
+
+def apply_sequence_fog():
+    """Apply fog preset based on current sequence.
+
+    Gets the current folder's parent sequence from AYON,
+    looks up the matching fog preset from settings, and applies
+    it to hardwareRenderingGlobals.
+
+    Returns:
+        bool: True if preset was applied, False otherwise.
+    """
+    # Get sequence name from AYON context
+    sequence_name = get_sequence_name()
+    if not sequence_name:
+        cmds.warning(
+            "Could not determine sequence from AYON context. "
+            "Make sure you are in a valid shot/sequence context."
+        )
+        return False
+
+    # Get fog presets from settings
+    presets = get_fog_presets()
+    if not presets:
+        cmds.warning("No fog presets configured in project settings.")
+        return False
+
+    # Find matching preset
+    preset = find_preset_for_sequence(sequence_name, presets)
+    if not preset:
+        cmds.warning(
+            "No fog preset found for sequence '{}'. "
+            "Available sequences: {}".format(
+                sequence_name,
+                [p.get("sequence_name", "") for p in presets]
+            )
+        )
+        return False
+
+    # Get attrs from nested structure
+    attrs = preset.get("attrs", {})
+    if not attrs:
+        cmds.warning("Fog preset for '{}' has no attributes defined.".format(sequence_name))
+        return False
+
+    # Apply the preset
+    apply_fog_settings(attrs)
+
+    print("Applied fog preset for sequence '{}':".format(sequence_name))
+    print("  Falloff: {}".format(attrs.get("hwFogFalloff", 0)))
+    print("  Start: {}".format(attrs.get("hwFogStart", 0)))
+    print("  End: {}".format(attrs.get("hwFogEnd", 100)))
+    print("  Alpha: {}".format(attrs.get("hwFogAlpha", 1)))
+    print("  Color: R={}, G={}, B={}".format(
+        attrs.get("hwFogColorR", 0.5),
+        attrs.get("hwFogColorG", 0.5),
+        attrs.get("hwFogColorB", 0.5)
+    ))
+
+    return True
+
+
 def _has_sequence_fog_preset():
-    """Check if current sequence has a fog preset in halon_maya_toolkit settings.
-    
+    """Check if current sequence has a fog preset in maya settings.
+
     Also checks if hardware fog is currently enabled in Maya viewport.
-    
+
     Returns:
         bool: True if sequence has fog preset AND fog is enabled in viewport.
     """
@@ -3175,58 +3365,19 @@ def _has_sequence_fog_preset():
             return False
     except Exception:
         return False
-    
-    # Get current context
-    project_name = get_current_project_name()
-    folder_path = get_current_folder_path()
-    if not project_name or not folder_path:
-        return False
-    
-    # Get halon_maya_toolkit fog presets
-    settings = get_project_settings(project_name)
-    toolkit_settings = settings.get("halon_maya_toolkit", {})
-    maya_settings = toolkit_settings.get("maya", {})
-    fog_presets = maya_settings.get("fog_presets", [])
-    
-    if not fog_presets:
-        return False
-    
-    # Get sequence name from folder hierarchy
-    sequence_name = None
-    try:
-        folder_entity = ayon_api.get_folder_by_path(
-            project_name, folder_path, fields=["id", "parentId", "name", "folderType"]
-        )
-        if folder_entity:
-            # If this folder is a Sequence, use its name
-            if folder_entity.get("folderType") == "Sequence":
-                sequence_name = folder_entity.get("name")
-            else:
-                # Get parent folder (sequence)
-                parent_id = folder_entity.get("parentId")
-                if parent_id:
-                    parent_entity = ayon_api.get_folder_by_id(
-                        project_name, parent_id, fields=["id", "name", "folderType"]
-                    )
-                    if parent_entity:
-                        if parent_entity.get("folderType") == "Sequence":
-                            sequence_name = parent_entity.get("name")
-                        else:
-                            sequence_name = parent_entity.get("name")
-    except Exception:
-        return False
-    
+
+    # Get sequence name from AYON context
+    sequence_name = get_sequence_name()
     if not sequence_name:
         return False
-    
-    # Check if sequence has a fog preset (case-insensitive)
-    sequence_upper = sequence_name.upper()
-    for preset in fog_presets:
-        preset_seq = preset.get("sequence_name", "")
-        if preset_seq.upper() == sequence_upper:
-            return True
-    
-    return False
+
+    # Get fog presets from maya settings
+    fog_presets = get_fog_presets()
+    if not fog_presets:
+        return False
+
+    # Check if sequence has a fog preset
+    return find_preset_for_sequence(sequence_name, fog_presets) is not None
 
 
 def load_capture_preset(data):

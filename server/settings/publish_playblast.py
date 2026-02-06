@@ -290,6 +290,61 @@ class PlayblastProfilesModel(BaseSettingsModel):
     )
 
 
+class FogAttrsModel(BaseSettingsModel):
+    """Hardware fog attribute values."""
+    _isGroup = True
+    hwFogFalloff: str = SettingsField(
+        "0",
+        enum_resolver=hardware_falloff_enum,
+        title="Falloff",
+        description="Fog falloff type. Linear uses Start/End, Exponential uses Density."
+    )
+    hwFogStart: float = SettingsField(
+        1000.0,
+        title="Start",
+        description="Distance where fog begins (float). Example: 1000"
+    )
+    hwFogEnd: float = SettingsField(
+        100000.0,
+        title="End",
+        description="Distance where fog is fully opaque (float). Example: 100000"
+    )
+    hwFogAlpha: float = SettingsField(
+        0.25,
+        title="Alpha",
+        description="Fog opacity 0-1 (float). Example: 0.25"
+    )
+    hwFogColorR: float = SettingsField(
+        0.3,
+        title="Color R",
+        description="Red channel 0-1 (float). Example: 0.3"
+    )
+    hwFogColorG: float = SettingsField(
+        0.3,
+        title="Color G",
+        description="Green channel 0-1 (float). Example: 0.3"
+    )
+    hwFogColorB: float = SettingsField(
+        0.3,
+        title="Color B",
+        description="Blue channel 0-1 (float). Example: 0.3"
+    )
+
+
+class FogPresetItem(BaseSettingsModel):
+    """Hardware fog preset for a sequence."""
+    _layout = "expanded"
+    sequence_name: str = SettingsField(
+        "",
+        title="Sequence Name",
+        description="AYON sequence folder name (not case-sensitive). Example: NOD"
+    )
+    attrs: FogAttrsModel = SettingsField(
+        default_factory=FogAttrsModel,
+        title="Fog Attributes"
+    )
+
+
 class ExtractPlayblastSetting(BaseSettingsModel):
     capture_preset: CapturePresetSetting = SettingsField(
         default_factory=CapturePresetSetting,
@@ -298,6 +353,11 @@ class ExtractPlayblastSetting(BaseSettingsModel):
     profiles: list[PlayblastProfilesModel] = SettingsField(
         default_factory=list,
         title="Profiles"
+    )
+    fog_presets: list[FogPresetItem] = SettingsField(
+        default_factory=list,
+        title="Hardware Fog Presets",
+        description="Per-sequence fog presets. When a preset exists and fog is enabled in viewport, playblast uses artist's viewport fog settings."
     )
 
 
@@ -419,5 +479,6 @@ DEFAULT_PLAYBLAST_SETTING = {
             "overscan": 1.0
         }
     },
-    "profiles": []
+    "profiles": [],
+    "fog_presets": []
 }
