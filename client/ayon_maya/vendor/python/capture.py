@@ -169,7 +169,6 @@ def capture(camera=None,
     with _independent_panel(width=width + padding,
                             height=height + padding,
                             off_screen=off_screen) as panel:
-        cmds.setFocus(panel)
 
         all_playblast_kwargs = {
             "compression": compression,
@@ -632,13 +631,7 @@ def _independent_panel(width, height, off_screen=False):
     if not off_screen:
         cmds.showWindow(window)
 
-    # Set the modelEditor of the modelPanel as the active view so it takes
-    # the playback focus. Does seem redundant with the `refresh` added in.
-    editor = cmds.modelPanel(panel, query=True, modelEditor=True)
-    cmds.modelEditor(editor, edit=True, activeView=True)
-
     # Force a draw refresh of Maya so it keeps focus on the new panel
-    # This focus is required to force preview playback in the independent panel
     cmds.refresh(force=True)
 
     try:

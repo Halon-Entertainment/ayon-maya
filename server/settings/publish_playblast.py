@@ -132,6 +132,25 @@ class ViewportOptionsSetting(BaseSettingsModel):
     xray: bool = SettingsField(False, title="X-Ray")
     jointXray: bool = SettingsField(False, title="X-Ray Joints")
     backfaceCulling: bool = SettingsField(False, title="Backface Culling")
+    # Controls how many hardware lights VP2 uses; higher values can affect performance.
+    useMaximumHardwareLights: bool = SettingsField(
+        True,
+        title="Use Maximum Hardware Lights",
+        description=(
+            "When enabled, VP2 enforces the Maximum Lights value. "
+            "When disabled, VP2 auto-determines light count."
+        ),
+        section="Performance"
+    )
+    maxHardwareLights: int = SettingsField(
+        16,
+        title="Maximum Lights",
+        description=(
+            "Maximum number of hardware lights for VP2 rendering. "
+            "Only used when 'Use Maximum Hardware Lights' is enabled. "
+            "Higher values may impact performance."
+        )
+    )
     ssaoEnable: bool = SettingsField(
         False, title="Screen Space Ambient Occlusion", section="SSAO"
     )
@@ -327,6 +346,8 @@ DEFAULT_PLAYBLAST_SETTING = {
             "xray": False,
             "jointXray": False,
             "backfaceCulling": False,
+            "useMaximumHardwareLights": True,
+            "maxHardwareLights": 8,
             "ssaoEnable": False,
             "ssaoAmount": 1,
             "ssaoRadius": 16,

@@ -120,6 +120,10 @@ def unlocked(node):
     Args:
         node (str): The name of the node to unlock.
     """
+    if not cmds.objExists(node):
+        yield
+        return
+
     has_locked = cmds.lockNode(node, query=True, lock=True)[0]
     cmds.lockNode(node, lock=False)
 
@@ -229,6 +233,7 @@ def render_capture_preset(preset):
     # not supported by `capture` so we pop it off of the preset
     reload_textures = preset["viewport_options"].pop("loadTextures", False)
     panel = preset.pop("panel")
+
     with contextlib.ExitStack() as stack:
         stack.enter_context(maintained_time())
         stack.enter_context(panel_camera(panel, preset["camera"]))
@@ -239,7 +244,7 @@ def render_capture_preset(preset):
             stack.enter_context(material_loading_mode(mode="immediate"))
             # Regenerate all UDIM tiles previews
             reload_all_udim_tile_previews()
-        path = capture.capture(log=self.log, **preset)
+        path = capture.capture(log=log, **preset)
 
     return path
 
@@ -325,6 +330,10 @@ def generate_capture_preset(instance, camera, path,
 
     # When using 'project settings' we preserve the capture preset that
     # was picked, then we do not override it with the instance data
+    log.debug(
+        "[DEBUG generate_capture_preset] instance displayLights=%s",
+        instance.data.get("displayLights")
+    )
     if instance.data["displayLights"] != "project_settings":
         viewport_options["displayLights"] = instance.data["displayLights"]
 
@@ -332,6 +341,44 @@ def generate_capture_preset(instance, camera, path,
     transparency = instance.data.get("transparency", 0)
     if transparency != 0:
         preset["viewport2_options"]["transparencyAlgorithm"] = transparency
+
+    # Backfill light limit settings from hardwareRenderingGlobals if not set
+    # in settings, so playblasts match user's viewport preferences
+    viewport2_options = preset.setdefault("viewport2_options", {})
+    if "useMaximumHardwareLights" not in viewport2_options:
+        viewport2_options["useMaximumHardwareLights"] = cmds.getAttr(
+            "hardwareRenderingGlobals.useMaximumHardwareLights"
+        )
+    if "maxHardwareLights" not in viewport2_options:
+        viewport2_options["maxHardwareLights"] = cmds.getAttr(
+            "hardwareRenderingGlobals.maxHardwareLights"
+        )
+
+    # DEBUG: Log light count and viewport2_options for playblast debugging
+    light_types = [
+        "light", "aiAreaLight", "aiSkyDomeLight", "aiMeshLight",
+        "aiPhotometricLight", "RedshiftPhysicalLight", "RedshiftDomeLight",
+        "RedshiftIESLight", "RedshiftPortalLight"
+    ]
+    all_lights = []
+    for lt in light_types:
+        lights = cmds.ls(type=lt)
+        if lights:
+            all_lights.extend(lights)
+    log.debug(
+        "[DEBUG generate_capture_preset] Scene lights count: %d, lights: %s",
+        len(all_lights), all_lights
+    )
+    log.debug(
+        "[DEBUG generate_capture_preset] viewport2_options: "
+        "useMaximumHardwareLights=%s, maxHardwareLights=%s",
+        viewport2_options.get("useMaximumHardwareLights"),
+        viewport2_options.get("maxHardwareLights")
+    )
+    log.debug(
+        "[DEBUG generate_capture_preset] displayLights=%s",
+        preset.get("viewport_options", {}).get("displayLights")
+    )
 
     # Update preset with current panel setting
     # if override_viewport_options is turned off
@@ -3228,7 +3275,9 @@ def load_capture_preset(data):
         "motionBlurEnable",
         "motionBlurSampleCount",
         "motionBlurShutterOpenFraction",
-        "lineAAEnable"
+        "lineAAEnable",
+        "maxHardwareLights",
+        "useMaximumHardwareLights",
     }
     for key, value in data["ViewportOptions"].items():
 
