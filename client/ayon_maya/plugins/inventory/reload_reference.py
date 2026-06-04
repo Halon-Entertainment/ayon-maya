@@ -11,7 +11,11 @@ class ReloadReference(InventoryAction):
     icon = "play"
     color = "#d8d8d8"
 
-    supported_loaders = {"ReferenceLoader", "MayaUSDReferenceLoader"}
+    supported_loaders = {
+        "ReferenceLoader",
+        "HalonReferenceLoader",
+        "MayaUSDReferenceLoader",
+    }
 
     def process(self, containers):
         for container in containers:
