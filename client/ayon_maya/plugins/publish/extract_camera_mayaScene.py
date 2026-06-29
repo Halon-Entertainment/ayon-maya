@@ -108,6 +108,8 @@ class ExtractCameraMayaScene(plugin.MayaExtractorPlugin,
 
     def process(self, instance):
         """Plugin entry point."""
+        if not self.is_active(instance.data):
+            return
         # get settings
         maya_settings = instance.context.data["project_settings"]["maya"]
         ext_mapping = {
@@ -142,8 +144,7 @@ class ExtractCameraMayaScene(plugin.MayaExtractorPlugin,
         # get cameras
         members = set(cmds.ls(instance.data['setMembers'], leaf=True,
                       shapes=True, long=True, dag=True))
-        cameras = set(cmds.ls(members, leaf=True, shapes=True, long=True,
-                      dag=True, type="camera"))
+        cameras = set(cmds.ls(members, type="camera", long=True))
 
         # validate required settings
         assert isinstance(step, float), "Step must be a float value"
